@@ -228,6 +228,17 @@ async def normalize_gemini_request(
                 thinking_config["thinkingLevel"] = thinking_level
                 thinking_config.pop("thinkingBudget", None)  # 避免与 thinkingLevel 冲突
 
+            # 高思考模式: 在最后一个 user 消息前注入 /think 指令
+            if "-maxthinking" in model or "-max" in model or "-high" in model:
+                contents = result.get("contents", [])
+                for content in reversed(contents):
+                    if isinstance(content, dict) and content.get("role") == "user":
+                        parts = content.get("parts", [])
+                        if parts is not None:
+                            parts.insert(0, {"text": "/think\n<user_input_start>"})
+                            log.debug(f"[GEMINICLI] 高思考模式：已在最新用户消息前插入 /think 指令")
+                        break
+
             # includeThoughts 逻辑:
             # 1. 如果是 pro 模型，始终为 True
             # 2. 如果不是 pro 模型，检查是否有思考预算或思考等级
