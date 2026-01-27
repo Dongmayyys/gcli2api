@@ -4,6 +4,7 @@ Main Web Integration - Integrates all routers and modules
 """
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
@@ -27,6 +28,7 @@ from src.router.geminicli.anthropic import router as geminicli_anthropic_router
 from src.router.geminicli.model_list import router as geminicli_model_list_router
 from src.task_manager import shutdown_all_tasks
 from src.web_routes import router as web_router
+from src.request_logger import RequestLoggerMiddleware
 
 # 全局凭证管理器
 global_credential_manager = None
@@ -99,6 +101,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 精简请求日志中间件（只记录 API 调用的核心信息）
+app.add_middleware(RequestLoggerMiddleware)
+
 # 挂载路由器
 # OpenAI兼容路由 - 处理OpenAI格式请求
 app.include_router(geminicli_openai_router, prefix="", tags=["Geminicli OpenAI API"])
@@ -166,7 +171,8 @@ async def main():
     # 配置hypercorn
     config = Config()
     config.bind = [f"{host}:{port}"]
-    config.accesslog = "-"
+    # 通过环境变量控制 access log（ACCESS_LOG_ENABLED=false 关闭冗长日志）
+    config.accesslog = "-" if os.getenv("ACCESS_LOG_ENABLED", "false").lower() == "true" else None
     config.errorlog = "-"
     config.loglevel = "INFO"
 
