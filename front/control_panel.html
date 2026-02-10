@@ -1366,6 +1366,7 @@
                 <button class="tab" onclick="switchTab('antigravity-manage')">Antigravity凭证管理</button>
                 <button class="tab" onclick="switchTab('config')">配置管理</button>
                 <button class="tab" onclick="switchTab('logs')">实时日志</button>
+                <button class="tab" onclick="switchTab('debug')">🔍 调试</button>
                 <button class="tab" onclick="switchTab('about')">项目信息</button>
             </div>
 
@@ -2237,6 +2238,40 @@
                 <div id="logContainer"
                     style="background-color: #1e1e1e; color: #ffffff; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; border: 1px solid #333; border-radius: 5px; padding: 15px; white-space: pre-wrap; word-break: break-all;">
                     <div id="logContent">等待连接日志流...</div>
+                </div>
+            </div>
+
+            <!-- 调试标签页 -->
+            <div id="debugTab" class="tab-content">
+                <h3>🔍 请求体调试日志</h3>
+                <p style="color: #666; margin-bottom: 20px;">捕获完整的 API 请求体，用于分析客户端注入行为和请求结构差异。</p>
+
+                <!-- 状态卡片 -->
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                    <div id="debugStatusCard"
+                        style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-radius: 8px; background-color: #f8f9fa; border: 1px solid #e1e4e8;">
+                        <span id="debugStatusDot"
+                            style="width: 12px; height: 12px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>
+                        <span id="debugStatusText" style="font-weight: 500; color: #333;">加载中...</span>
+                        <span id="debugLogSize" style="font-size: 12px; color: #999; margin-left: 10px;"></span>
+                    </div>
+                    <button id="debugToggleBtn" class="btn" onclick="toggleDebugLog()"
+                        style="width: auto; padding: 10px 24px; margin-bottom: 0;">
+                        加载中...
+                    </button>
+                    <button class="btn" onclick="loadDebugLogContent()"
+                        style="width: auto; padding: 10px 24px; margin-bottom: 0; background-color: #17a2b8;">
+                        🔄 刷新日志
+                    </button>
+                    <button class="btn" onclick="clearDebugLog()"
+                        style="width: auto; padding: 10px 24px; margin-bottom: 0; background-color: #dc3545;">
+                        🗑️ 清空日志
+                    </button>
+                </div>
+
+                <!-- 日志列表 -->
+                <div id="debugLogContainer" style="max-height: 650px; overflow-y: auto;">
+                    <div id="debugLogContent" style="color: #888;">点击「刷新日志」加载内容...</div>
                 </div>
             </div>
 

@@ -13,7 +13,9 @@ if str(project_root) not in sys.path:
 
 # 标准库
 import asyncio
+import datetime
 import json
+import os
 
 # 第三方库
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
@@ -46,6 +48,62 @@ from src.models import GeminiRequest, model_to_dict
 
 # 本地模块 - 任务管理
 from src.task_manager import create_managed_task
+
+# 本地模块 - 请求日志
+from src.request_logger import extract_client_name
+
+# ==================== DEBUG 工具函数 ====================
+
+def _write_debug_log(data: dict, model_name: str, request: "Request"):
+    """
+    将请求体以 JSONL 格式写入 docs/requests.log（每条请求一行 JSON）。
+    前端面板可解析为可折叠卡片。
+    """
+    import copy
+
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    user_agent = request.headers.get("User-Agent", "")
+    client = extract_client_name(user_agent)
+
+    # 统计消息角色
+    contents = data.get("contents", [])
+    roles = {}
+    for msg in contents:
+        r = msg.get("role", "?")
+        roles[r] = roles.get(r, 0) + 1
+
+    # 深拷贝并过滤 thoughtSignature（体积大且不是客户端注入内容）
+    dump_data = copy.deepcopy(data)
+    for msg in dump_data.get("contents", []):
+        parts = msg.get("parts")
+        if parts:
+            msg["parts"] = [
+                {"thoughtSignature": "(已过滤)"} if "thoughtSignature" in p else p
+                for p in parts
+            ]
+
+    # 构造 JSONL 记录：meta + body
+    record = {
+        "ts": ts,
+        "model": model_name,
+        "client": client,
+        "msg_count": len(contents),
+        "roles": roles,
+        "has_system": "systemInstruction" in data,
+        "has_tools": "tools" in data,
+        "body": dump_data,
+    }
+
+    try:
+        log_dir = project_root / "docs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        # 每条记录一行，不缩进（节省空间）
+        line = json.dumps(record, ensure_ascii=False)
+        with open(log_dir / "requests.log", "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        log.debug("[DEBUG_LOG] 请求已记录到 docs/requests.log")
+    except Exception as e:
+        log.warning(f"[DEBUG_LOG] 写入日志失败: {e}")
 
 
 # ==================== 路由器初始化 ====================
@@ -123,6 +181,7 @@ async def generate_content(
 @router.post("/v1beta/models/{model:path}:streamGenerateContent")
 @router.post("/v1/models/{model:path}:streamGenerateContent")
 async def stream_generate_content(
+    request: Request,
     gemini_request: GeminiRequest,
     model: str = Path(..., description="Model name"),
     api_key: str = Depends(authenticate_gemini_flexible),
@@ -139,6 +198,11 @@ async def stream_generate_content(
 
     # 转换为字典
     normalized_dict = model_to_dict(gemini_request)
+
+    # ========== DEBUG: 请求日志（通过 /debug/on 开启） ==========
+    from src.panel.debug import debug_log_enabled
+    if debug_log_enabled:
+        _write_debug_log(normalized_dict, model, request)
 
     # 处理模型名称和功能检测
     use_fake_streaming = is_fake_streaming_model(model)

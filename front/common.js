@@ -1,4 +1,4 @@
-// =====================================================================
+﻿// =====================================================================
 // GCLI2API 控制面板公共JavaScript模块
 // =====================================================================
 
@@ -535,7 +535,7 @@ function linkifyText(text) {
     // 匹配 http://, https:// 和 www. 开头的链接，排除常见的标点符号
     const urlPattern = /(https?:\/\/[^\s"'<>()[\]{}]+)|(www\.[^\s"'<>()[\]{}]+)/gi;
 
-    return text.replace(urlPattern, function(url) {
+    return text.replace(urlPattern, function (url) {
         let href = url;
         // 如果是 www. 开头，添加 https://
         if (url.startsWith('www.')) {
@@ -570,14 +570,14 @@ function showMessageModal(title, message, type = 'info') {
     document.body.appendChild(modal);
 
     // 点击遮罩层关闭
-    modal.addEventListener('click', function(e) {
+    modal.addEventListener('click', function (e) {
         if (e.target === modal) {
             modal.remove();
         }
     });
 
     // ESC 键关闭
-    const escHandler = function(e) {
+    const escHandler = function (e) {
         if (e.key === 'Escape') {
             modal.remove();
             document.removeEventListener('keydown', escHandler);
@@ -1001,6 +1001,7 @@ function triggerTabDataLoad(tabName) {
     if (tabName === 'antigravity-manage') AppState.antigravityCreds.refresh();
     if (tabName === 'config') loadConfig();
     if (tabName === 'logs') connectWebSocket();
+    if (tabName === 'debug') { loadDebugStatus(); loadDebugLogContent(); }
 }
 
 
@@ -2058,7 +2059,7 @@ function escapeHtml(text) {
 function highlightHttpLinks(text) {
     // 匹配 http:// 或 https:// 开头的URL
     const urlRegex = /(https?:\/\/[^\s<>"]+)/gi;
-    return text.replace(urlRegex, function(url) {
+    return text.replace(urlRegex, function (url) {
         return `<a href="${url}" target="_blank" style="color: #007bff; text-decoration: underline; word-break: break-all;" title="点击打开: ${url}">${url}</a>`;
     });
 }
@@ -2340,7 +2341,7 @@ async function deduplicateByEmail() {
             const msg = `去重完成：删除 ${data.deleted_count} 个重复凭证，保留 ${data.kept_count} 个凭证（${data.unique_emails_count} 个唯一邮箱）`;
             showStatus(msg, 'success');
             await AppState.creds.refresh();
-            
+
             // 显示详细信息
             if (data.duplicate_groups && data.duplicate_groups.length > 0) {
                 let details = '去重详情：\n\n';
@@ -2371,7 +2372,7 @@ async function deduplicateAntigravityByEmail() {
             const msg = `去重完成：删除 ${data.deleted_count} 个重复凭证，保留 ${data.kept_count} 个凭证（${data.unique_emails_count} 个唯一邮箱）`;
             showStatus(msg, 'success');
             await AppState.antigravityCreds.refresh();
-            
+
             // 显示详细信息
             if (data.duplicate_groups && data.duplicate_groups.length > 0) {
                 let details = '去重详情：\n\n';
@@ -3153,3 +3154,199 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+// =====================================================================
+// 调试日志控制
+// =====================================================================
+
+// 内部缓存：当前 debug 开关状态
+let _debugLogEnabled = false;
+
+// 格式化文件大小
+function _formatLogSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// 更新 UI 状态（开关按钮、状态指示灯）
+function _updateDebugUI(enabled, logSize) {
+    _debugLogEnabled = enabled;
+
+    const dot = document.getElementById('debugStatusDot');
+    const text = document.getElementById('debugStatusText');
+    const sizeEl = document.getElementById('debugLogSize');
+    const btn = document.getElementById('debugToggleBtn');
+
+    if (dot) dot.style.backgroundColor = enabled ? '#28a745' : '#6c757d';
+    if (text) text.textContent = enabled ? '✅ 调试日志已开启' : '⏸️ 调试日志已关闭';
+    if (sizeEl && logSize !== undefined) {
+        sizeEl.textContent = logSize > 0 ? `（${_formatLogSize(logSize)}）` : '';
+    }
+    if (btn) {
+        btn.textContent = enabled ? '⏸️ 关闭日志' : '▶️ 开启日志';
+        btn.style.backgroundColor = enabled ? '#6c757d' : '#28a745';
+    }
+}
+
+// 加载 debug 开关状态
+async function loadDebugStatus() {
+    try {
+        const resp = await fetch('./debug/status', { headers: getAuthHeaders() });
+        if (resp.ok) {
+            const data = await resp.json();
+            _updateDebugUI(data.debug_log, data.log_size);
+        }
+    } catch (e) {
+        console.error('加载调试状态失败:', e);
+    }
+}
+
+// 切换 debug 开关
+async function toggleDebugLog() {
+    const action = _debugLogEnabled ? 'off' : 'on';
+    try {
+        const resp = await fetch(`./debug/${action}`, { headers: getAuthHeaders() });
+        if (resp.ok) {
+            const data = await resp.json();
+            _updateDebugUI(data.debug_log);
+            showStatus(data.message, 'success');
+        } else {
+            showStatus('切换失败', 'error');
+        }
+    } catch (e) {
+        showStatus(`网络错误: ${e.message}`, 'error');
+    }
+}
+
+// 渲染单条请求的摘要标签
+function _renderRoleSummary(roles) {
+    if (!roles || Object.keys(roles).length === 0) return '';
+    return Object.entries(roles).map(([r, c]) => `${r}×${c}`).join(', ');
+}
+
+// JSON 语法高亮（VS Code 暗色主题配色）
+function _highlightJson(jsonStr) {
+    var escaped = jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.replace(
+        /("(?:\\.|[^"\\])*")\s*:/g,
+        '<span style="color:#9cdcfe;">$1</span>:'
+    ).replace(
+        /:\s*("(?:\\.|[^"\\])*")/g,
+        ': <span style="color:#ce9178;">$1</span>'
+    ).replace(
+        /:\s*(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g,
+        ': <span style="color:#b5cea8;">$1</span>'
+    ).replace(
+        /:\s*(true|false|null)/g,
+        ': <span style="color:#569cd6;">$1</span>'
+    );
+}
+
+// 复制 JSON body 到剪贴板
+function _copyDebugJson(idx) {
+    var el = document.getElementById('debug-body-' + idx);
+    if (!el) return;
+    var text = el.getAttribute('data-raw');
+    navigator.clipboard.writeText(text).then(function () {
+        var btn = document.getElementById('debug-copy-' + idx);
+        if (btn) {
+            var orig = btn.textContent;
+            btn.textContent = '✅ 已复制';
+            setTimeout(function () { btn.textContent = orig; }, 1500);
+        }
+    });
+}
+
+// 加载日志并渲染为可折叠卡片（含语法高亮 + 复制按钮）
+async function loadDebugLogContent() {
+    var container = document.getElementById('debugLogContainer');
+    var contentEl = document.getElementById('debugLogContent');
+    if (!contentEl) return;
+    contentEl.innerHTML = '<span style="color: #888;">正在加载...</span>';
+
+    try {
+        var resp = await fetch('./debug/log', { headers: getAuthHeaders() });
+        var records = await resp.json();
+
+        if (!Array.isArray(records) || records.length === 0) {
+            contentEl.innerHTML = '<span style="color: #888;">（暂无日志）</span>';
+            loadDebugStatus();
+            return;
+        }
+
+        var reversed = records.slice().reverse();
+        var html = '';
+        for (var i = 0; i < reversed.length; i++) {
+            var rec = reversed[i];
+            var roleSummary = _renderRoleSummary(rec.roles);
+            var badgeParts = [];
+            if (rec.has_system) badgeParts.push('🔒 System');
+            if (rec.has_tools) badgeParts.push('🔧 Tools');
+            var badgeStr = badgeParts.join(' ');
+
+            var rawJson = rec.body ? JSON.stringify(rec.body, null, 2) : '';
+            var highlighted = rawJson ? _highlightJson(rawJson) : '(无 body)';
+            var dataRaw = rawJson.replace(/"/g, '&quot;');
+
+            html += '<div style="border: 1px solid #444; border-radius: 6px; margin-bottom: 8px; overflow: hidden;">';
+            // 卡片头
+            html += '<div onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'; this.querySelector(\'.debug-arrow\').textContent = this.nextElementSibling.style.display === \'none\' ? \'▶\' : \'▼\'" ';
+            html += 'style="padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background-color: #2d2d2d; user-select: none;">';
+            html += '<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">';
+            html += '<span class="debug-arrow" style="color: #888; font-size: 11px;">▶</span>';
+            html += '<span style="color: #569cd6; font-weight: 500;">' + (rec.ts || '?') + '</span>';
+            html += '<span style="color: #dcdcaa;">' + (rec.model || '?') + '</span>';
+            html += '<span style="color: #9cdcfe; font-size: 11px;">' + (rec.client || '') + '</span>';
+            html += '</div>';
+            html += '<div style="display: flex; align-items: center; gap: 8px; font-size: 11px; flex-shrink: 0;">';
+            html += '<span style="color: #b5cea8;">📨 ' + (rec.msg_count || 0) + ' (' + roleSummary + ')</span>';
+            if (badgeStr) html += '<span style="color: #ce9178;">' + badgeStr + '</span>';
+            html += '</div></div>';
+
+            // 卡片内容（默认折叠）
+            html += '<div style="display: none; background-color: #1a1a1a; border-top: 1px solid #444;">';
+            // 工具栏
+            html += '<div style="display: flex; justify-content: flex-end; padding: 6px 12px 0;">';
+            html += '<button id="debug-copy-' + i + '" onclick="_copyDebugJson(' + i + ')" ';
+            html += 'style="padding: 3px 10px; font-size: 11px; background: #3a3a3a; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;">📋 复制 JSON</button>';
+            html += '</div>';
+            // JSON body（语法高亮）
+            html += '<div id="debug-body-' + i + '" data-raw="' + dataRaw + '" ';
+            html += 'style="padding: 8px 12px 12px; max-height: 500px; overflow-y: auto;">';
+            html += '<pre style="margin: 0; white-space: pre-wrap; word-break: break-all; color: #d4d4d4; font-size: 12px; line-height: 1.5;">' + highlighted + '</pre>';
+            html += '</div></div></div>';
+        }
+
+        contentEl.innerHTML = html;
+        loadDebugStatus();
+    } catch (e) {
+        contentEl.innerHTML = '<span style="color: #f44336;">加载失败: ' + e.message + '</span>';
+    }
+}
+
+
+// 清空日志文件
+async function clearDebugLog() {
+    if (!confirm('确定要清空调试日志吗？')) return;
+
+    try {
+        const resp = await fetch('./debug/log', {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (resp.ok) {
+            showStatus('日志已清空', 'success');
+            const contentEl = document.getElementById('debugLogContent');
+            if (contentEl) {
+                contentEl.textContent = '（日志文件为空）';
+                contentEl.style.color = '#888';
+            }
+            loadDebugStatus();
+        } else {
+            showStatus('清空失败', 'error');
+        }
+    } catch (e) {
+        showStatus(`网络错误: ${e.message}`, 'error');
+    }
+}
