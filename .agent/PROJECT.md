@@ -104,6 +104,5 @@ Router 层接收多格式请求 → Converter 层做格式双向转换 → API �
   - `refactor: 精简模型列表，从120个减到20个`
   - `Update mongodb_manager.py`（上游风格，自由格式）
   - `chore: update version.txt [skip ci]`（自动生成）
-- 上游同步: 通过 `/sync-upstream` 工作流 rebase 上游到本地分支
 
 ## 已有的规则文件
